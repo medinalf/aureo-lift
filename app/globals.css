@@ -1,0 +1,42 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: 9 9 9;
+  --bg-surface: 17 17 17;
+  --bg-elevated: 26 26 26;
+  --bg-input: 34 34 34;
+  --border: 42 42 42;
+  --accent: 201 168 76;
+  --foreground: 240 237 232;
+  --muted: 92 92 92;
+  --danger: 224 83 83;
+  --success: 76 175 125;
+}
+
+.light {
+  --bg-primary: 247 244 239;
+  --bg-surface: 255 255 255;
+  --bg-elevated: 237 233 225;
+  --bg-input: 240 237 232;
+  --border: 221 216 206;
+  --accent: 160 120 42;
+  --foreground: 26 26 26;
+  --muted: 154 149 144;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: rgb(var(--bg-primary));
+  color: rgb(var(--foreground));
+  font-family: 'DM Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; }
+input[type='number'] { -moz-appearance: textfield; }
