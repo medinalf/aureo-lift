@@ -2,14 +2,15 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTheme } from './theme-provider'
-import { LayoutDashboard, Dumbbell, ClipboardList, TrendingUp, History, Sun, Moon } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, TrendingUp, History, Sun, Moon } from 'lucide-react'
+
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/workout', label: 'Entrenar Hoy', icon: Dumbbell },
   { href: '/routines', label: 'Rutinas', icon: ClipboardList },
   { href: '/progress', label: 'Progresión', icon: TrendingUp },
   { href: '/history', label: 'Historial', icon: History },
 ]
+
 export function Sidebar({ profile }: { profile: any }) {
   const pathname = usePathname()
   const { theme, toggle } = useTheme()
@@ -24,7 +25,8 @@ export function Sidebar({ profile }: { profile: any }) {
         {NAV.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href)
           return (
-            <Link key={href} href={href} className="flex items-center gap-3 px-6 py-2.5 text-sm font-medium transition-colors relative"
+            <Link key={href} href={href}
+              className="flex items-center gap-3 px-6 py-2.5 text-sm font-medium transition-colors relative"
               style={{ color: active ? 'rgb(var(--accent))' : 'rgb(var(--muted))' }}>
               {active && <span className="absolute left-0 top-1/4 bottom-1/4 w-0.5 rounded-r" style={{ backgroundColor: 'rgb(var(--accent))' }} />}
               <Icon size={16} />{label}
