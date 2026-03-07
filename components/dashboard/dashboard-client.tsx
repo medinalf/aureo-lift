@@ -73,10 +73,27 @@ export function DashboardClient({
   recentSessions, lastSession, weeklyVolume, topExercise1RM
 }: any) {
   const [workoutOpen, setWorkoutOpen] = useState(false)
+  // overrideDay: when user is on a rest day but wants to train a specific day
+  const [overrideDayId, setOverrideDayId] = useState<string | null>(null)
   const today = new Date()
   const hour  = today.getHours()
   const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches'
   const hasToday = todayDay && todayExercises.length > 0
+
+  // For rest-day override: find next training day
+  const allDays = (routine?.routine_days ?? []) as any[]
+  const nextTrainingDay = allDays
+    .filter((d: any) => d.day_of_week !== today.getDay())
+    .sort((a: any, b: any) => {
+      const da = (a.day_of_week - today.getDay() + 7) % 7
+      const db = (b.day_of_week - today.getDay() + 7) % 7
+      return da - db
+    })[0] ?? null
+  const overrideDay = overrideDayId ? allDays.find((d: any) => d.id === overrideDayId) : null
+  const activeDay = overrideDay ?? todayDay
+  const activeExercises = overrideDay
+    ? [...(overrideDay.routine_exercises ?? [])].sort((a: any, b: any) => a.order_index - b.order_index)
+    : todayExercises
 
   // Volumen de la sesión anterior para comparativa
   const prevSession = recentSessions[1] ?? null
@@ -92,11 +109,11 @@ export function DashboardClient({
 
   return (
     <>
-      {workoutOpen && hasToday && (
+      {workoutOpen && (hasToday || overrideDay) && (
         <QuickWorkout
-          userId={userId} routine={routine} todayDay={todayDay}
-          todayExercises={todayExercises} lastPerf={lastPerf}
-          onClose={() => setWorkoutOpen(false)} />
+          userId={userId} routine={routine} todayDay={activeDay}
+          todayExercises={activeExercises} lastPerf={lastPerf}
+          onClose={() => { setWorkoutOpen(false); setOverrideDayId(null) }} />
       )}
 
       <div className="p-5 md:p-8 max-w-2xl mx-auto">
@@ -178,12 +195,24 @@ export function DashboardClient({
                 <>
                   <p className="text-3xl mb-2">😴</p>
                   <p className="font-semibold mb-1">Día de descanso</p>
-                  <p className="text-sm mb-4" style={{ color: MUT }}>Recuperate. El próximo entrenamiento está cerca.</p>
-                  <Link href="/hiit"
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold"
-                    style={{ backgroundColor: ELEV, color: MUT, border: `1px solid ${BORD}` }}>
-                    <Timer size={15} /> Hacer HIIT / Cardio
-                  </Link>
+                  <p className="text-sm mb-5" style={{ color: MUT }}>
+                    Recuperate. El próximo entrenamiento está cerca.
+                  </p>
+                  {nextTrainingDay && (
+                    <button
+                      onClick={() => { setOverrideDayId(nextTrainingDay.id); setWorkoutOpen(true) }}
+                      className="inline-flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-black mb-3"
+                      style={{ backgroundColor: A }}>
+                      Adelantar — {nextTrainingDay.day_label}
+                    </button>
+                  )}
+                  <div>
+                    <Link href="/hiit"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold"
+                      style={{ backgroundColor: ELEV, color: MUT, border: `1px solid ${BORD}` }}>
+                      <Timer size={15} /> Hacer HIIT / Cardio
+                    </Link>
+                  </div>
                 </>
               ) : (
                 <>
