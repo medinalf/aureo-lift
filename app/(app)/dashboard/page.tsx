@@ -6,26 +6,25 @@ export default async function DashboardPage() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return null
 
-  const today = new Date().getDay()
+  const today = new Date().getDay() // 0=Sun…6=Sat
 
-  // Active routine with today's day
+  // ── Active routine + today's day ──────────────────────────────────────────
   const { data: routine } = await supabase
     .from('routines')
     .select('*, routine_days(*, routine_exercises(*, exercise:exercises(*)))')
     .eq('user_id', session.user.id)
     .eq('is_active', true)
-    .single()
+    .single() as any
 
-  const r = routine as any
-  const todayDay = r?.routine_days?.find((d: any) => d.day_of_week === today) ?? null
+  const todayDay = routine?.routine_days?.find((d: any) => d.day_of_week === today) ?? null
   const todayExercises = todayDay
     ? [...(todayDay.routine_exercises ?? [])].sort((a: any, b: any) => a.order_index - b.order_index)
     : []
 
-  // Last 3 completed sessions
+  // ── Last 3 completed sessions ─────────────────────────────────────────────
   const { data: recentSessions } = await supabase
     .from('workout_sessions')
-    .select('*, routine:routines(name), workout_sets(*, exercise:exercises(id, name, muscle_group))')
+    .select('*, routine:routines(name), workout_sets(*, exercise:exercises(id,name,muscle_group))')
     .eq('user_id', session.user.id)
     .eq('status', 'completed')
     .order('finished_at', { ascending: false })
@@ -34,7 +33,7 @@ export default async function DashboardPage() {
   const sessions = (recentSessions ?? []) as any[]
   const lastSession = sessions[0] ?? null
 
-  // For each exercise today, find last performance
+  // ── Last perf for today's exercises ──────────────────────────────────────
   const exerciseIds = todayExercises.map((re: any) => re.exercise_id)
   let lastPerf: Record<string, any[]> = {}
 
@@ -50,14 +49,15 @@ export default async function DashboardPage() {
 
     for (const s of (prevSets ?? []) as any[]) {
       if (!lastPerf[s.exercise_id]) lastPerf[s.exercise_id] = []
-      if (lastPerf[s.exercise_id].length < 6) lastPerf[s.exercise_id].push(s)
+      if (lastPerf[s.exercise_id].length < 8) lastPerf[s.exercise_id].push(s)
     }
   }
 
-  // Weekly volume
+  // ── Weekly volume ─────────────────────────────────────────────────────────
   const weekStart = new Date()
   weekStart.setDate(weekStart.getDate() - weekStart.getDay())
-  weekStart.setHours(0, 0, 0, 0)
+  weekStart.setHours(0,0,0,0)
+
   const { data: weekSets } = await supabase
     .from('workout_sets')
     .select('weight_kg, reps, session:workout_sessions!inner(user_id, status, finished_at)')
@@ -68,16 +68,38 @@ export default async function DashboardPage() {
   const weeklyVolume = ((weekSets ?? []) as any[])
     .reduce((a, s) => a + (s.weight_kg ?? 0) * (s.reps ?? 0), 0)
 
+  // ── Best 1RM per key exercise (top exercise from today or all) ────────────
+  let topExercise1RM: { name: string; current: number; previous: number } | null = null
+  const keyExId = todayExercises[0]?.exercise_id
+  if (keyExId) {
+    const { data: hist } = await supabase
+      .from('one_rep_max_history')
+      .select('one_rep_max, calculated_at')
+      .eq('user_id', session.user.id)
+      .eq('exercise_id', keyExId)
+      .order('calculated_at', { ascending: false })
+      .limit(20)
+
+    if (hist && hist.length >= 2) {
+      topExercise1RM = {
+        name: todayExercises[0]?.exercise?.name ?? '',
+        current: (hist[0] as any).one_rep_max,
+        previous: (hist[hist.length - 1] as any).one_rep_max,
+      }
+    }
+  }
+
   return (
     <DashboardClient
       userId={session.user.id}
-      routine={r}
+      routine={routine}
       todayDay={todayDay}
       todayExercises={todayExercises}
       lastPerf={lastPerf}
       recentSessions={sessions}
       lastSession={lastSession}
       weeklyVolume={weeklyVolume}
+      topExercise1RM={topExercise1RM}
     />
   )
 }

@@ -5,9 +5,9 @@ import { LayoutDashboard, ClipboardList, TrendingUp, History } from 'lucide-reac
 
 const NAV = [
   { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard },
-  { href: '/routines', label: 'Rutinas', icon: ClipboardList },
-  { href: '/progress', label: 'Progreso', icon: TrendingUp },
-  { href: '/history', label: 'Historial', icon: History },
+  { href: '/routines',  label: 'Rutinas', icon: ClipboardList },
+  { href: '/progress',  label: 'Progreso', icon: TrendingUp },
+  { href: '/history',   label: 'Historial', icon: History },
 ]
 
 export function BottomNav() {
@@ -17,7 +17,7 @@ export function BottomNav() {
       style={{ backgroundColor: 'rgb(var(--bg-surface))', borderTop: '1px solid rgb(var(--border))' }}>
       <div className="flex">
         {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href)
+          const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
           return (
             <Link key={href} href={href}
               className="flex flex-col items-center gap-1 flex-1 pt-3 pb-4 text-[10px] font-medium transition-colors"

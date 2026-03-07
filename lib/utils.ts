@@ -8,35 +8,41 @@ export function formatDuration(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60)
   const s = seconds % 60
   if (h > 0) return `${h}h ${m}m`
-  if (m > 0) return `${m}m ${s}s`
+  if (m > 0) return `${m}m ${String(s).padStart(2,'0')}s`
   return `${s}s`
 }
 
+/** Epley formula: weight × (1 + reps/30) */
+export function calculateE1RM(weight: number, reps: number): number {
+  if (reps <= 0 || weight <= 0) return 0
+  if (reps === 1) return weight
+  return Math.round(weight * (1 + reps / 30))
+}
+
 export function getMuscleGroupLabel(group: string): string {
-  const labels: Record<string, string> = {
+  const l: Record<string, string> = {
     chest: 'Pecho', back: 'Espalda', shoulders: 'Hombros',
     arms: 'Brazos', legs: 'Piernas', core: 'Core',
     glutes: 'Glúteos', full_body: 'Cuerpo completo',
   }
-  return labels[group] ?? group
+  return l[group] ?? group
 }
 
 export function getMuscleEmoji(group: string): string {
-  const map: Record<string, string> = {
+  const m: Record<string, string> = {
     chest: '🏋️', back: '💪', shoulders: '🔺',
     arms: '💪', legs: '🦵', core: '⭕', glutes: '🍑', full_body: '⚡',
   }
-  return map[group] ?? '🏃'
+  return m[group] ?? '🏃'
 }
 
 export function getDayName(dow: number, short = false): string {
-  const days = short
-    ? ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
-    : ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
-  return days[dow] ?? ''
+  const long = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado']
+  const sh   = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
+  return (short ? sh : long)[dow] ?? ''
 }
 
-export function calculateE1RM(weight: number, reps: number): number {
-  if (reps === 1) return weight
-  return Math.round(weight * (1 + reps / 30))
+export function getProgressPercent(current: number, previous: number): number {
+  if (!previous) return 0
+  return Math.round(((current - previous) / previous) * 100)
 }

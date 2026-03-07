@@ -2,13 +2,14 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTheme } from './theme-provider'
-import { LayoutDashboard, ClipboardList, TrendingUp, History, Sun, Moon } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, TrendingUp, History, Flame, Sun, Moon } from 'lucide-react'
 
 const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/routines', label: 'Rutinas', icon: ClipboardList },
-  { href: '/progress', label: 'Progresión', icon: TrendingUp },
-  { href: '/history', label: 'Historial', icon: History },
+  { href: '/dashboard', label: 'Dashboard',  icon: LayoutDashboard },
+  { href: '/routines',  label: 'Rutinas',    icon: ClipboardList },
+  { href: '/hiit',      label: 'HIIT / Cardio', icon: Flame },
+  { href: '/progress',  label: 'Progresión', icon: TrendingUp },
+  { href: '/history',   label: 'Historial',  icon: History },
 ]
 
 export function Sidebar({ profile }: { profile: any }) {
@@ -23,12 +24,13 @@ export function Sidebar({ profile }: { profile: any }) {
       </div>
       <nav className="flex-1">
         {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href)
+          const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
           return (
             <Link key={href} href={href}
               className="flex items-center gap-3 px-6 py-2.5 text-sm font-medium transition-colors relative"
               style={{ color: active ? 'rgb(var(--accent))' : 'rgb(var(--muted))' }}>
-              {active && <span className="absolute left-0 top-1/4 bottom-1/4 w-0.5 rounded-r" style={{ backgroundColor: 'rgb(var(--accent))' }} />}
+              {active && <span className="absolute left-0 top-1/4 bottom-1/4 w-0.5 rounded-r"
+                style={{ backgroundColor: 'rgb(var(--accent))' }} />}
               <Icon size={16} />{label}
             </Link>
           )

@@ -1,107 +1,215 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { format, subMonths } from 'date-fns'
+import { useState, useMemo } from 'react'
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid, ReferenceLine
+} from 'recharts'
+import { format, startOfWeek, getWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { getMuscleGroupLabel } from '@/lib/utils'
+import { getMuscleEmoji, getMuscleGroupLabel, calculateE1RM } from '@/lib/utils'
+import { TrendingUp, BarChart2, Activity } from 'lucide-react'
 
-const RANGES = [{ label: '1M', months: 1 }, { label: '3M', months: 3 }, { label: '6M', months: 6 }, { label: '1A', months: 12 }]
+const A    = 'rgb(var(--accent))'
+const SURF = 'rgb(var(--bg-surface))'
+const BORD = 'rgb(var(--border))'
+const MUT  = 'rgb(var(--muted))'
+const FG   = 'rgb(var(--foreground))'
 
-export function ProgressClient({ userId, exercises }: any) {
-  const supabase = createClient()
-  const [selected, setSelected] = useState<string>(exercises[0]?.id ?? '')
-  const [range, setRange] = useState(3)
-  const [data, setData] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
+// Custom tooltip
+function ChartTip({ active, payload, label, unit = 'kg' }: any) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="px-3 py-2 rounded-xl text-xs shadow-lg"
+      style={{ backgroundColor: 'rgb(var(--bg-elevated))', border: `1px solid rgb(var(--accent))`, color: FG }}>
+      <p className="font-bold mb-0.5">{label}</p>
+      {payload.map((p: any, i: number) => (
+        <p key={i} style={{ color: p.color ?? A }}>
+          {p.name}: <b>{p.value}{unit}</b>
+        </p>
+      ))}
+    </div>
+  )
+}
 
-  useEffect(() => {
-    if (!selected) return
-    const fetch = async () => {
-      setLoading(true)
-      const start = subMonths(new Date(), range).toISOString()
-      const { data: rows } = await supabase.from('workout_sets')
-        .select('weight_kg, reps, completed_at, workout_sessions!inner(user_id, status)')
-        .eq('exercise_id', selected).eq('workout_sessions.user_id', userId)
-        .eq('workout_sessions.status', 'completed').eq('is_warmup', false)
-        .not('weight_kg', 'is', null).gte('completed_at', start)
-        .order('completed_at', { ascending: true })
-      const byDate = new Map<string, { max_weight: number; total_volume: number }>()
-      for (const r of (rows ?? []) as any[]) {
-        const d = format(new Date(r.completed_at), 'yyyy-MM-dd')
-        const cur = byDate.get(d) ?? { max_weight: 0, total_volume: 0 }
-        byDate.set(d, { max_weight: Math.max(cur.max_weight, r.weight_kg ?? 0), total_volume: cur.total_volume + (r.weight_kg ?? 0) * (r.reps ?? 0) })
-      }
-      setData(Array.from(byDate.entries()).map(([date, v]) => ({
-        date: format(new Date(date), 'd MMM', { locale: es }), ...v
-      })))
-      setLoading(false)
+export function ProgressClient({ oneRepHistory, sessionVols, weekSessions }: any) {
+  // Group exercises for selector
+  const exercises = useMemo(() => {
+    const m = new Map<string, { id: string; name: string; muscle: string; count: number }>()
+    for (const r of oneRepHistory) {
+      const id = r.exercise?.id ?? r.exercise_id
+      if (!m.has(id)) m.set(id, { id, name: r.exercise?.name ?? id, muscle: r.exercise?.muscle_group ?? '', count: 0 })
+      m.get(id)!.count++
     }
-    fetch()
-  }, [selected, range])
+    return [...m.values()].sort((a, b) => b.count - a.count)
+  }, [oneRepHistory])
 
-  const groups = Array.from(new Set(exercises.map((e: any) => e.muscle_group))) as string[]
+  const [selectedEx, setSelectedEx] = useState<string>(exercises[0]?.id ?? '')
+
+  // 1RM data for selected exercise
+  const e1rmData = useMemo(() => {
+    if (!selectedEx) return []
+    return oneRepHistory
+      .filter((r: any) => (r.exercise?.id ?? r.exercise_id) === selectedEx)
+      .map((r: any) => ({
+        date: format(new Date(r.calculated_at), 'd MMM', { locale: es }),
+        '1RM': r.one_rep_max,
+        kg: r.weight_kg,
+        reps: r.reps,
+      }))
+      .slice(-20)
+  }, [selectedEx, oneRepHistory])
+
+  // Volume per session
+  const volData = useMemo(() =>
+    sessionVols.map((s: any) => ({
+      date: s.finished_at ? format(new Date(s.finished_at), 'd MMM', { locale: es }) : '—',
+      Volumen: Math.round(s.workout_sets?.reduce((a: number, x: any) => a + (x.weight_kg??0)*(x.reps??0), 0) ?? 0),
+      label: s.routine?.name ?? 'Libre',
+    })), [sessionVols])
+
+  // Sessions per week
+  const freqData = useMemo(() => {
+    const weeks: Record<string, number> = {}
+    for (const s of weekSessions) {
+      const w = format(startOfWeek(new Date(s.finished_at), { weekStartsOn: 1 }), "'S'w · MMM", { locale: es })
+      weeks[w] = (weeks[w] ?? 0) + 1
+    }
+    return Object.entries(weeks).map(([week, sessions]) => ({ week, sessions }))
+  }, [weekSessions])
+
+  const selectedMeta = exercises.find(e => e.id === selectedEx)
+  const best1RM = e1rmData.length ? Math.max(...e1rmData.map((d: any) => d['1RM'])) : 0
+  const first1RM = e1rmData[0]?.['1RM'] ?? 0
+  const last1RM = e1rmData[e1rmData.length - 1]?.['1RM'] ?? 0
+  const progress1RM = first1RM > 0 ? Math.round(((last1RM - first1RM) / first1RM) * 100) : 0
 
   return (
-    <div className="p-6 md:p-8 max-w-3xl mx-auto">
-      <div className="mb-8">
-        <p className="text-xs uppercase tracking-widest mb-1" style={{ color: 'rgb(var(--muted))' }}>Análisis</p>
-        <h1 className="font-display text-3xl font-semibold">Progresión</h1>
-      </div>
+    <div className="p-5 md:p-8 max-w-2xl mx-auto">
+      <h1 className="font-display text-2xl font-semibold mb-6">Progresión</h1>
 
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {RANGES.map(r => (
-          <button key={r.label} onClick={() => setRange(r.months)}
-            className="px-4 py-2 text-xs font-semibold rounded-xl transition-colors"
-            style={{ backgroundColor: range === r.months ? 'rgb(var(--accent))' : 'rgb(var(--bg-elevated))', color: range === r.months ? 'black' : 'rgb(var(--muted))' }}>
-            {r.label}
-          </button>
-        ))}
-      </div>
+      {/* ── Exercise 1RM chart ── */}
+      <section className="mb-8">
+        <div className="flex items-center gap-2 mb-4">
+          <TrendingUp size={15} style={{ color: A }} />
+          <h2 className="text-sm font-semibold uppercase tracking-widest">1RM Estimado</h2>
+        </div>
 
-      <div className="rounded-2xl p-5 mb-6" style={{ backgroundColor: 'rgb(var(--bg-surface))', border: '1px solid rgb(var(--border))' }}>
-        <label className="block text-xs uppercase tracking-widest mb-3" style={{ color: 'rgb(var(--muted))' }}>Ejercicio</label>
-        <select value={selected} onChange={e => setSelected(e.target.value)}
-          className="w-full px-4 py-3 text-sm rounded-xl focus:outline-none"
-          style={{ backgroundColor: 'rgb(var(--bg-input))', border: '1px solid rgb(var(--border))', color: 'rgb(var(--foreground))' }}>
-          {groups.map(g => (
-            <optgroup key={g} label={getMuscleGroupLabel(g)}>
-              {exercises.filter((e: any) => e.muscle_group === g).map((e: any) => (
-                <option key={e.id} value={e.id}>{e.name}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </div>
-
-      {loading ? (
-        <div className="h-64 flex items-center justify-center" style={{ color: 'rgb(var(--muted))' }}>Cargando...</div>
-      ) : data.length > 0 ? (
-        <div className="space-y-6">
-          {[{ key: 'max_weight', label: 'Peso Máximo (kg)', color: '#C9A84C' }, { key: 'total_volume', label: 'Volumen Total (kg)', color: '#4CAF7D' }].map(chart => (
-            <div key={chart.key} className="rounded-2xl p-5" style={{ backgroundColor: 'rgb(var(--bg-surface))', border: '1px solid rgb(var(--border))' }}>
-              <p className="text-xs uppercase tracking-widest mb-4" style={{ color: 'rgb(var(--muted))' }}>{chart.label}</p>
-              <ResponsiveContainer width="100%" height={180}>
-                <AreaChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
-                  <defs>
-                    <linearGradient id={`g-${chart.key}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={chart.color} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={chart.color} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="date" tick={{ fill: 'rgb(92,92,92)', fontSize: 10 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: 'rgb(92,92,92)', fontSize: 10 }} axisLine={false} tickLine={false} width={40} />
-                  <Tooltip contentStyle={{ backgroundColor: 'rgb(26,26,26)', border: '1px solid rgb(42,42,42)', borderRadius: 12, fontSize: 12 }} itemStyle={{ color: chart.color }} labelStyle={{ color: 'rgb(92,92,92)' }} />
-                  <Area type="monotone" dataKey={chart.key} stroke={chart.color} fill={`url(#g-${chart.key})`} strokeWidth={2} dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+        {/* Exercise selector */}
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-4 no-scrollbar">
+          {exercises.slice(0, 8).map(ex => (
+            <button key={ex.id}
+              onClick={() => setSelectedEx(ex.id)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all"
+              style={{
+                backgroundColor: selectedEx === ex.id ? 'rgba(201,168,76,0.15)' : 'rgb(var(--bg-elevated))',
+                border: `1.5px solid ${selectedEx === ex.id ? A : BORD}`,
+                color: selectedEx === ex.id ? A : MUT,
+              }}>
+              {getMuscleEmoji(ex.muscle)} {ex.name}
+            </button>
           ))}
         </div>
-      ) : (
-        <div className="text-center py-20" style={{ color: 'rgb(var(--muted))' }}>
-          <div className="text-5xl mb-4">📈</div>
-          <p>Sin datos para este ejercicio en este periodo</p>
+
+        {/* Stats row */}
+        {e1rmData.length > 0 && (
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            {[
+              { label: 'Mejor 1RM', value: `${best1RM}kg` },
+              { label: 'Actual', value: `${last1RM}kg` },
+              { label: 'Progresión', value: `${progress1RM >= 0 ? '+' : ''}${progress1RM}%`,
+                color: progress1RM >= 0 ? '#34C759' : '#FF3B30' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="rounded-xl p-3 text-center"
+                style={{ backgroundColor: SURF, border: `1px solid ${BORD}` }}>
+                <p className="text-xs mb-1" style={{ color: MUT }}>{label}</p>
+                <p className="text-lg font-bold" style={{ color: color ?? FG }}>{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Line chart */}
+        {e1rmData.length >= 2 ? (
+          <div className="rounded-2xl p-4" style={{ backgroundColor: SURF, border: `1px solid ${BORD}` }}>
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={e1rmData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: MUT }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: MUT }} tickLine={false} axisLine={false}
+                  domain={['auto', 'auto']} />
+                <Tooltip content={<ChartTip unit="kg" />} />
+                <Line type="monotone" dataKey="1RM" stroke={A} strokeWidth={2.5}
+                  dot={{ fill: A, r: 3 }} activeDot={{ r: 5 }} name="1RM est." />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: SURF, border: `1px solid ${BORD}` }}>
+            <p style={{ color: MUT }}>
+              {e1rmData.length === 0
+                ? 'Sin datos. Registrá entrenamientos para ver tu progresión.'
+                : 'Necesitás al menos 2 sesiones para ver la gráfica.'}
+            </p>
+          </div>
+        )}
+      </section>
+
+      {/* ── Volume chart ── */}
+      {volData.length > 0 && (
+        <section className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <BarChart2 size={15} style={{ color: A }} />
+            <h2 className="text-sm font-semibold uppercase tracking-widest">Volumen por sesión</h2>
+          </div>
+          <div className="rounded-2xl p-4" style={{ backgroundColor: SURF, border: `1px solid ${BORD}` }}>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={volData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: MUT }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: MUT }} tickLine={false} axisLine={false}
+                  tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}t` : `${v}`} />
+                <Tooltip content={<ChartTip unit="kg" />} />
+                <Bar dataKey="Volumen" fill="rgba(201,168,76,0.7)" radius={[4,4,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      )}
+
+      {/* ── Frequency chart ── */}
+      {freqData.length > 0 && (
+        <section className="mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Activity size={15} style={{ color: A }} />
+            <h2 className="text-sm font-semibold uppercase tracking-widest">Frecuencia semanal</h2>
+          </div>
+          <div className="rounded-2xl p-4" style={{ backgroundColor: SURF, border: `1px solid ${BORD}` }}>
+            <ResponsiveContainer width="100%" height={140}>
+              <BarChart data={freqData} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <XAxis dataKey="week" tick={{ fontSize: 9, fill: MUT }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: MUT }} tickLine={false} axisLine={false}
+                  allowDecimals={false} domain={[0, 7]} />
+                <Tooltip content={<ChartTip unit=" sesiones" />} />
+                <ReferenceLine y={3} stroke="rgba(201,168,76,0.25)" strokeDasharray="4 2" />
+                <Bar dataKey="sessions" name="Sesiones" fill="rgba(201,168,76,0.6)" radius={[4,4,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <p className="text-[10px] text-center mt-2" style={{ color: MUT }}>
+              Línea punteada = objetivo 3 sesiones/semana
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* Empty state */}
+      {exercises.length === 0 && (
+        <div className="text-center py-16">
+          <p className="text-4xl mb-4">📈</p>
+          <p className="font-semibold mb-2">Sin datos aún</p>
+          <p className="text-sm" style={{ color: MUT }}>
+            Registrá tus primeros entrenamientos y acá vas a ver tu progresión.
+          </p>
         </div>
       )}
     </div>
