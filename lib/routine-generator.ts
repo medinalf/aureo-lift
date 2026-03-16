@@ -1,213 +1,183 @@
-// ──────────────────────────────────────────────
-// Routine Generator
-// Generates a personalized routine based on user profile
-// ──────────────────────────────────────────────
-
-export type Goal = 'fat_loss' | 'hypertrophy' | 'strength' | 'maintenance'
-export type Level = 'beginner' | 'intermediate' | 'advanced'
-export type Equipment = 'full_gym' | 'home_weights' | 'calisthenics' | 'minimal' | 'none'
+export type Goal       = 'fat_loss' | 'hypertrophy' | 'strength' | 'maintenance'
+export type Level      = 'beginner' | 'intermediate' | 'advanced'
+// Equipment values match what's stored in exercises.equipment column
+export type Equipment  = 'barbell' | 'dumbbell' | 'machine' | 'cable' | 'bodyweight' | 'kettlebell'
 
 export interface GeneratorParams {
-  goal: Goal
-  frequency: number // 1–7 days/week
-  level: Level
+  goal:      Goal
+  frequency: number   // 1–7 days per week
+  level:     Level
   equipment: Equipment[]
 }
 
-// ── Template definitions ──────────────────────
-
-// Each split maps frequency to an array of day configs
-// day config: { label, muscle_groups[] }
-const SPLITS: Record<string, (freq: number) => { label: string; groups: string[] }[]> = {
-
-  // Full Body — best for beginners, fat loss, low frequency
-  full_body: (freq) => Array.from({ length: freq }, (_, i) => ({
-    label: `Full Body ${freq > 1 ? i + 1 : ''}`.trim(),
-    groups: ['chest', 'back', 'legs', 'shoulders', 'arms', 'core'],
+// ── Splits ───────────────────────────────────────────────────────────────────
+const SPLITS = {
+  full_body:   (freq: number) => Array.from({ length: freq }, (_, i) => ({
+    label: freq > 1 ? `Full Body ${i + 1}` : 'Full Body',
+    groups: ['chest','back','legs','shoulders','arms','core'],
   })),
-
-  // Upper / Lower — 4 days
-  upper_lower: (_) => [
-    { label: 'Upper A', groups: ['chest', 'back', 'shoulders', 'arms'] },
-    { label: 'Lower A', groups: ['legs', 'glutes', 'core'] },
-    { label: 'Upper B', groups: ['chest', 'back', 'shoulders', 'arms'] },
-    { label: 'Lower B', groups: ['legs', 'glutes', 'core'] },
+  upper_lower: () => [
+    { label: 'Upper A', groups: ['chest','back','shoulders','arms'] },
+    { label: 'Lower A', groups: ['legs','glutes','core'] },
+    { label: 'Upper B', groups: ['chest','back','shoulders','arms'] },
+    { label: 'Lower B', groups: ['legs','glutes','core'] },
   ],
-
-  // Push / Pull / Legs — 3 or 6 days
-  ppl: (freq) => {
+  ppl: (freq: number) => {
     const base = [
-      { label: 'Push', groups: ['chest', 'shoulders', 'arms'] },
-      { label: 'Pull', groups: ['back', 'arms'] },
-      { label: 'Legs', groups: ['legs', 'glutes', 'core'] },
+      { label: 'Push',  groups: ['chest','shoulders','arms'] },
+      { label: 'Pull',  groups: ['back','arms'] },
+      { label: 'Legs',  groups: ['legs','glutes','core'] },
     ]
     return freq === 6 ? [...base, ...base.map(d => ({ ...d, label: d.label + ' B' }))] : base
   },
-
-  // Bro split — 5 days
-  bro: (_) => [
-    { label: 'Pecho', groups: ['chest', 'arms'] },
-    { label: 'Espalda', groups: ['back', 'core'] },
-    { label: 'Hombros', groups: ['shoulders', 'arms'] },
-    { label: 'Piernas', groups: ['legs', 'glutes'] },
-    { label: 'Brazos', groups: ['arms', 'core'] },
+  bro: () => [
+    { label: 'Pecho',    groups: ['chest','arms'] },
+    { label: 'Espalda',  groups: ['back','core'] },
+    { label: 'Hombros',  groups: ['shoulders','arms'] },
+    { label: 'Piernas',  groups: ['legs','glutes'] },
+    { label: 'Brazos',   groups: ['arms','core'] },
   ],
 }
 
-// Pick the best split for the user
 function chooseSplit(freq: number, goal: Goal, level: Level) {
   if (freq <= 3 || level === 'beginner') return SPLITS.full_body(freq)
-  if (freq === 4) return SPLITS.upper_lower(freq)
-  if (freq === 5) return SPLITS.bro(freq)
-  if (freq >= 6) return SPLITS.ppl(freq)
-  return SPLITS.full_body(freq)
+  if (freq === 4) return SPLITS.upper_lower()
+  if (freq === 5) return SPLITS.bro()
+  return SPLITS.ppl(freq)
 }
 
-// How many exercises per session
 function exercisesPerSession(level: Level, goal: Goal): number {
-  if (goal === 'strength') return level === 'beginner' ? 4 : 5
+  if (goal === 'strength')    return level === 'beginner' ? 4 : 5
   if (goal === 'hypertrophy') return level === 'advanced' ? 7 : 6
   return level === 'beginner' ? 4 : 5
 }
 
-// Sets/reps scheme per goal
-function getSetsReps(goal: Goal, level: Level): { sets: number; reps: string; rest: number } {
-  if (goal === 'strength') return { sets: 5, reps: '3-5', rest: 180 }
-  if (goal === 'hypertrophy') return { sets: level === 'beginner' ? 3 : 4, reps: '8-12', rest: 90 }
-  if (goal === 'fat_loss') return { sets: 3, reps: '12-15', rest: 60 }
-  return { sets: 3, reps: '10-12', rest: 90 } // maintenance
+function getSetsReps(goal: Goal, level: Level) {
+  if (goal === 'strength')    return { sets: 5, reps: '3-5',   rest: 180 }
+  if (goal === 'hypertrophy') return { sets: level === 'beginner' ? 3 : 4, reps: '8-12',  rest: 90 }
+  if (goal === 'fat_loss')    return { sets: 3, reps: '12-15', rest: 60  }
+  return                             { sets: 3, reps: '10-12', rest: 90  }
 }
 
-// Filter exercises by equipment
-function filterByEquipment(exercises: any[], equipment: Equipment[]): any[] {
-  if (equipment.includes('full_gym')) return exercises
-  const allowed: Record<Equipment, string[]> = {
-    full_gym: [],
-    home_weights: ['dumbbell', 'barbell', 'bodyweight', 'none'],
-    calisthenics: ['bodyweight', 'none'],
-    minimal: ['dumbbell', 'bodyweight', 'none'],
-    none: ['bodyweight', 'none'],
+// Map user-facing equipment strings (from profile) to DB equipment column values
+export function mapProfileEquipmentToDb(profileEquipment: string[]): Equipment[] {
+  const map: Record<string, Equipment> = {
+    barbell:    'barbell',
+    dumbbells:  'dumbbell',
+    dumbbell:   'dumbbell',
+    machines:   'machine',
+    machine:    'machine',
+    cables:     'cable',
+    cable:      'cable',
+    bodyweight: 'bodyweight',
+    kettlebells:'kettlebell',
+    kettlebell: 'kettlebell',
   }
-  const allowedEquip = new Set(equipment.flatMap(e => allowed[e] ?? []))
-  return exercises.filter(ex =>
-    !ex.equipment || allowedEquip.has(ex.equipment) || allowedEquip.has('none')
-  )
+  const result = new Set<Equipment>(['bodyweight']) // always include bodyweight
+  for (const eq of (profileEquipment ?? [])) {
+    const mapped = map[eq.toLowerCase()]
+    if (mapped) result.add(mapped)
+  }
+  return [...result]
 }
 
-// Priority exercises per group — picked first regardless of level
+// Filter exercises to only those the user can perform with their equipment
+function filterByEquipment(exercises: any[], allowed: Equipment[]): any[] {
+  const set = new Set(allowed)
+  return exercises.filter(ex => !ex.equipment || set.has(ex.equipment))
+}
+
 const PRIORITY: Record<string, string[]> = {
-  chest: ['Press de Banca', 'Press con Mancuernas', 'Fondos en Paralelas'],
-  back: ['Peso Muerto', 'Dominadas', 'Remo con Barra'],
-  legs: ['Sentadilla', 'Prensa de Piernas', 'Peso Muerto Rumano'],
+  chest:     ['Press de Banca', 'Press con Mancuernas', 'Fondos en Paralelas'],
+  back:      ['Peso Muerto', 'Dominadas', 'Remo con Barra', 'Remo con Mancuerna'],
+  legs:      ['Sentadilla', 'Prensa de Piernas', 'Peso Muerto Rumano'],
   shoulders: ['Press Militar', 'Press Arnold', 'Elevaciones Laterales'],
-  arms: ['Curl de Bíceps con Barra', 'Extensiones de Tríceps', 'Curl Martillo'],
-  glutes: ['Hip Thrust', 'Peso Muerto Rumano', 'Patada de Glúteo'],
-  core: ['Plancha', 'Crunch con Cable', 'Elevaciones de Piernas'],
+  arms:      ['Curl de Bíceps con Barra', 'Curl de Bíceps con Mancuerna', 'Extensiones de Tríceps'],
+  glutes:    ['Hip Thrust', 'Peso Muerto Rumano', 'Patada de Glúteo'],
+  core:      ['Plancha', 'Elevaciones de Piernas', 'Rueda Abdominal'],
 }
 
-// Pick N exercises for a group, prioritising compound/key movements
-function pickExercises(
-  exercises: any[],
-  groups: string[],
-  count: number,
-  level: Level
-): any[] {
+function pickExercises(exercises: any[], groups: string[], count: number): any[] {
   const result: any[] = []
   const used = new Set<string>()
 
-  // First pass: priority exercises
+  // Priority pass
   for (const group of groups) {
-    const priority = PRIORITY[group] ?? []
-    const groupExercises = exercises.filter(e => e.muscle_group === group)
-    for (const name of priority) {
+    if (result.length >= count) break
+    for (const name of (PRIORITY[group] ?? [])) {
       if (result.length >= count) break
-      const ex = groupExercises.find(e => e.name === name && !used.has(e.id))
+      const ex = exercises.find(e => e.muscle_group === group && e.name === name && !used.has(e.id))
       if (ex) { result.push(ex); used.add(ex.id) }
     }
-    if (result.length >= count) break
   }
-
-  // Second pass: fill remaining slots
-  if (result.length < count) {
-    for (const group of groups) {
-      const groupExercises = exercises.filter(e => e.muscle_group === group && !used.has(e.id))
-      for (const ex of groupExercises) {
-        if (result.length >= count) break
-        result.push(ex); used.add(ex.id)
-      }
+  // Fill pass
+  for (const group of groups) {
+    if (result.length >= count) break
+    for (const ex of exercises.filter(e => e.muscle_group === group && !used.has(e.id))) {
       if (result.length >= count) break
+      result.push(ex); used.add(ex.id)
     }
   }
-
   return result.slice(0, count)
 }
 
-// ── Main export ───────────────────────────────
+// ── Exported interfaces ───────────────────────────────────────────────────────
+export interface GeneratedExercise {
+  exercise_id:         string
+  name:                string
+  muscle_group:        string
+  order_index:         number
+  target_sets:         number
+  target_reps:         string
+  target_rest_seconds: number
+}
 
 export interface GeneratedDay {
-  label: string
-  day_of_week: number // 1=Mon, 2=Tue, ... mapped sequentially
-  exercises: {
-    exercise_id: string
-    name: string
-    muscle_group: string
-    order_index: number
-    target_sets: number
-    target_reps: string
-    target_rest_seconds: number
-  }[]
+  label:       string
+  day_of_week: number   // 0=Sun, 1=Mon … 6=Sat
+  exercises:   GeneratedExercise[]
 }
 
 export interface GeneratedRoutine {
-  name: string
+  name:        string
   description: string
-  days: GeneratedDay[]
+  days:        GeneratedDay[]
 }
+
+const WEEKDAY_MAP = [1, 2, 3, 4, 5, 6, 0] // Mon→Sun
 
 export function generateRoutine(params: GeneratorParams, exercises: any[]): GeneratedRoutine {
   const { goal, frequency, level, equipment } = params
-
-  const availableExercises = filterByEquipment(exercises, equipment)
-  const split = chooseSplit(frequency, goal, level)
-  const exPerSession = exercisesPerSession(level, goal)
+  const available = filterByEquipment(exercises, equipment)
+  const split      = chooseSplit(frequency, goal, level)
+  const exCount    = exercisesPerSession(level, goal)
   const { sets, reps, rest } = getSetsReps(goal, level)
 
-  const GOAL_LABELS: Record<Goal, string> = {
-    fat_loss: 'Pérdida de Grasa',
-    hypertrophy: 'Hipertrofia',
-    strength: 'Fuerza',
-    maintenance: 'Mantenimiento',
+  const GOAL_LABELS: Record<Goal,  string> = {
+    fat_loss: 'Pérdida de Grasa', hypertrophy: 'Hipertrofia',
+    strength: 'Fuerza',           maintenance: 'Mantenimiento',
   }
-
   const LEVEL_LABELS: Record<Level, string> = {
-    beginner: 'Principiante',
-    intermediate: 'Intermedio',
-    advanced: 'Avanzado',
+    beginner: 'principiante', intermediate: 'intermedio', advanced: 'avanzado',
   }
 
-  // Map split days to weekdays starting Monday
-  const WEEKDAY_MAP = [1, 2, 3, 4, 5, 6, 0] // Mon–Sun
-
-  const days: GeneratedDay[] = split.map((dayConfig, i) => {
-    const picked = pickExercises(availableExercises, dayConfig.groups, exPerSession, level)
-    return {
-      label: dayConfig.label,
-      day_of_week: WEEKDAY_MAP[i] ?? i,
-      exercises: picked.map((ex, idx) => ({
-        exercise_id: ex.id,
-        name: ex.name,
-        muscle_group: ex.muscle_group,
-        order_index: idx,
-        target_sets: sets,
-        target_reps: reps,
-        target_rest_seconds: rest,
-      })),
-    }
-  })
+  const days: GeneratedDay[] = split.map((dayConfig, i) => ({
+    label:       dayConfig.label,
+    day_of_week: WEEKDAY_MAP[i] ?? i,
+    exercises:   pickExercises(available, dayConfig.groups, exCount).map((ex, idx) => ({
+      exercise_id:         ex.id,
+      name:                ex.name,
+      muscle_group:        ex.muscle_group,
+      order_index:         idx,
+      target_sets:         sets,
+      target_reps:         reps,
+      target_rest_seconds: rest,
+    })),
+  }))
 
   return {
-    name: `${GOAL_LABELS[goal]} — ${frequency}d/semana`,
-    description: `Rutina generada para ${LEVEL_LABELS[level].toLowerCase()}. ${exPerSession} ejercicios por sesión, ${sets}×${reps}.`,
+    name:        `${GOAL_LABELS[goal]} — ${frequency}d/semana`,
+    description: `Rutina para nivel ${LEVEL_LABELS[level]}. ${exCount} ejercicios/sesión, ${sets}×${reps}.`,
     days,
   }
 }
